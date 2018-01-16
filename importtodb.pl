@@ -15,22 +15,22 @@ use Thread::Queue;
 use DateTime;
 use POSIX qw( ceil );
 use lib '/home/modupe/SCRIPTS/SUB';
-#use routine;
-#use passw;
+use routine;
+use passw;
 
 # #CREATING LOG FILES
 my $std_out = '/home/modupe/.LOG/RavTAD-'.`date +%m-%d-%y_%T`; chomp $std_out; $std_out = $std_out.'.log';
 my $std_err = '/home/modupe/.LOG/RavTAD-'.`date +%m-%d-%y_%T`; chomp $std_err; $std_err = $std_err.'.err';
 my $jobid = "RavenTAD-".`date +%m-%d-%y_%T`;
 
-#open(STDOUT, '>', "$std_out") or die "Log file doesn't exist";
-#open(STDERR, '>', "$std_err") or die "Error file doesn't exist";
+open(STDOUT, '>', "$std_out") or die "Log file doesn't exist";
+open(STDERR, '>', "$std_err") or die "Error file doesn't exist";
 
 my ($VERSION, $DATE, $AUTHOR, $CONTACT, $EMAIL) = DEFAULTS();
 
 #--------------------------------------------------------------------------------
 
-my ($help, $manual, $sendemail,$folder2import, $mappingtool,$ardea, $ibis);
+my ($help, $manual, $sendemail, $folder2import, $mappingtool,$ardea, $ibis);
 our ($verbose, $nosql, $vnosql, $gnosql, $cnosql, $log, $transaction);
 our ($metadata, $tab, $excel, $datadb, $gene, $variant, $all, $vep, $annovar, $delete); #command options
 our ($file2consider,$connect); #connection and file details
@@ -67,12 +67,14 @@ if ($sendemail) { NOTIFICATION("Starting Job",0,0); }
 # -----------------------------------
 
 # CONNECT TO THE DATABASE
+processArguments();
+
 if ($folder2import =~ /\w.*_(\d+)/){
   $dbh = mysql();
   my $libraryidnumber = $1;
   print "JOB:\tImporting Transcriptome analysis Information => $libraryidnumber\n";
   `find $folder2import` or pod2usage ("ERROR: Can not locate \"$folder2import\"");
-  opendir (DIR, $folder2import) or pod2usage ("Error: $folder2import is not a folder, please specify your sample directory location "); close (DIR);
+  opendir (DIR, $folder2import) or pod2usage ("ERROR: $folder2import is not a folder, please specify your sample directory location "); close (DIR);
   my @foldercontent = split("\n", `find $folder2import -type f -print0 | xargs -0 ls -tr `); #get details of the folder
 		
   foreach (grep /\.gtf/, @foldercontent) { unless (`head -n 3 $_ | wc -l` <= 0 && $_ =~ /skipped/) { $transcriptsgtf = $_; } }
@@ -140,20 +142,20 @@ if ($folder2import =~ /\w.*_(\d+)/){
 						
 			#INSERT INTO DATABASE:
 			#MapStats table
-			if ($mappingtool) { print "NOTICE:\t Importing $mappingtool alignment information for $libraryidnumber to MapStats table ..."; }
+			if ($mappingtool) { print "NOTICE:\t Importing $mappingtool alignment information for $libraryidnumber to MappingStats table ..."; }
 			$sth = $dbh->prepare("insert into MappingStats (libraryid, totalreads, mappedreads, alignmentrate, deletions, insertions, junctions, date ) values (?,?,?,?,?,?,?,?)");
-			$sth ->execute($libraryidnumber, $totalreads, $mapped, $alignrate, $deletions, $insertions, $junctions, $date) or die "\nERROR:\t Complication in MapStats table, consult documentation\n";
+			$sth ->execute($libraryidnumber, $totalreads, $mapped, $alignrate, $deletions, $insertions, $junctions, $date) or die "\nERROR:\t Complication in MappingStats table, consult documentation\n";
 			if ($mappingtool) { print " Done\n"; }
 			#metadata table
 			if ($mappingtool) { print "NOTICE:\t Importing $mappingtool alignment information for $libraryidnumber to Metadata table ..."; }
 			$sth = $dbh->prepare("insert into TheMetadata (libraryid, refgenome, annfile, stranded, sequences, mappingtool,status ) values (?,?,?,?,?,?,?)");
-			$sth ->execute($libraryidnumber, $refgenomename, $annotationfile, $stranded,$sequences, $mappingtool,"done") or die "\nERROR:\t Complication in Metadata table, consult documentation\n";
+			$sth ->execute($libraryidnumber, $refgenomename, $annotationfile, $stranded,$sequences, $mappingtool,"done") or die "\nERROR:\t Complication in TheMetadata table, consult documentation\n";
 			
 			#Insert DataSyntaxes
 			if ($mparameters) {
 				$sth = $dbh->prepare("insert into Syntaxes (libraryid, mapsyntax ) values (?,?)");
 				$mparameters =~ s/\"//g;
-				$sth ->execute($libraryidnumber, $mparameters) or die "\nERROR:\t Complication in CommandSyntax table, consult documentation\n";
+				$sth ->execute($libraryidnumber, $mparameters) or die "\nERROR:\t Complication in Syntaxes table, consult documentation\n";
 			}
 			if ($mappingtool) { print " Done\n"; }
 			
@@ -180,7 +182,7 @@ if ($folder2import =~ /\w.*_(\d+)/){
 			unless ($found) {
 				print "NOTICE:\t Importing $mappingtool alignment information for $libraryidnumber to Metadata table ...";
 				$sth = $dbh->prepare("insert into TheMetadata (libraryid, refgenome, annfile, stranded, sequences, mappingtool,status) values (?,?,?,?,?,?,?)");
-				$sth ->execute($libraryidnumber, $refgenomename, $annotationfile, $stranded,$sequences, $mappingtool,"done") or die "\nERROR:\t Complication in Metadata table, consult documentation\n";
+				$sth ->execute($libraryidnumber, $refgenomename, $annotationfile, $stranded,$sequences, $mappingtool,"done") or die "\nERROR:\t Complication in TheMetadata table, consult documentation\n";
 				
 				#Insert DataSyntaxes
 				$sth = $dbh->prepare("insert into Syntaxes (libraryid, mapsyntax ) values (?,?)");
@@ -239,14 +241,165 @@ if ($folder2import =~ /\w.*_(\d+)/){
 				} #end if annversion is previously specified
 			} #end unless it's already in variants table
 		} #end unless default option is specified
-	} #unless & else exists in Mapstats						
+	} #unless & else exists in Mappingstats						
 	else {
 		pod2usage("FAILED: \"$libraryidnumber\" sample information is not in the database. Make sure the sample has been inputted from the website.");
 	} #end if data in sample table							
 								
 	print ("SUCCESS: Import of RNA Seq analysis information in \"$folder2import\"\n");						
 } 
-# -----------------------------------
+
+if ($delete){ #delete section
+	($ardea, $ibis) = fastbit();
+	my (%KEYDELETE, $decision);
+	my ($i,$alldelete) = (0,0);
+	unless ($log) { print "JOB:\t Deleting Existing Records in Database\n"; } #status
+	$dbh = mysql(); #connect to mysql
+  	$sth = $dbh->prepare("select libraryid from BirdLibraries where libraryid = '$delete'"); $sth->execute(); $found = $sth->fetch();
+	if ($found) {
+		unless ($log) { print "NOTICE:\t This module deletes records from ALL database systems. Proceed with caution\n"; }
+		$sth = $dbh->prepare("select libraryid from MappingStats where libraryid = '$delete'"); $sth->execute(); $found = $sth->fetch();
+    		if ($found) {
+			$i++; $KEYDELETE{$i} = "Alignment Information";
+		}
+		$sth = $dbh->prepare("select libraryid from GenesSummary where libraryid = '$delete'"); $sth->execute(); $found = $sth->fetch();
+    		if ($found) {
+			$i++; $KEYDELETE{$i} = "Expression Information";
+		}
+		$sth = $dbh->prepare("select libraryid from VariantSummary where libraryid = '$delete'"); $sth->execute(); $found = $sth->fetch();
+    		if ($found) {
+			$i++; $KEYDELETE{$i} = "Variant Information";
+		}
+		unless ($log) {
+			print "--------------------------------------------------------------------------\n";
+    		print "The following details match the libraryid '$delete' provided\n";
+    		foreach (sort {$a <=> $b} keys %KEYDELETE) { print "  ", uc($_),"\.  $KEYDELETE{$_}\n";}
+		}
+		$KEYDELETE{0} = "ALL information relating to '$delete'";
+		unless ($log) {
+			print "  0\.  ALL information relating to '$delete'\n";
+			print "--------------------------------------------------------------------------\n";
+			print "Choose which information you want remove (multiple options separated by comma) or press ENTER to leave ? ";
+			chomp ($decision = (<>)); print "\n";
+		} else {$decision = $log; }
+		if (length $decision >0) {
+			my @allverdict = split(",",$decision);
+			foreach my $verdict (sort {$b<=>$a} @allverdict) {
+				if (exists $KEYDELETE{$verdict}) {
+					print "NOTICE:\t Deleting $KEYDELETE{$verdict}\n";
+					if ($verdict == 0) {$alldelete = 1;}
+					if ($KEYDELETE{$verdict} =~ /^Variant/ || $alldelete == 1) {
+						if ($alldelete == 1){
+							if ($KEYDELETE{$i} =~ /^Variant/) { $i--;
+								my $ffastbit = fastbit_path(); #connect to fastbit
+								my $vfastbit = $ffastbit."/variant-information"; # specifying the variant section.
+								print "NOTICE:\t Deleting records for $delete in Variant tables ";
+								$sth = $dbh->prepare("delete from VariantAnnotation where libraryid = '$delete'"); $sth->execute(); print ".";
+								$sth = $dbh->prepare("delete from VariantResult where libraryid = '$delete'"); $sth->execute(); print ".";
+								$sth = $dbh->prepare("delete from VariantSummary where libraryid = '$delete'"); $sth->execute(); print ".";
+								my $execute = "$ibis -d $vfastbit -y \"libraryid = '$delete'\" -z";
+								`$execute`; print ".";
+								`rm -rf $vfastbit/*sp $vfastbit/*old $vfastbit/*idx $vfastbit/*dic $vfastbit/*int `; #removing old indexes
+								`$ibis -d $vfastbit -query "select genename, geneid, genetype, transcript, feature, codonchange, aminoacidchange, libraryid, chrom, tissue, species, consequence, existingvariant, source"`; #create a new index based on genename
+								print " Done\n";
+							}
+						} else {
+							my $ffastbit = fastbit_path(); #connect to fastbit
+							my $vfastbit = $ffastbit."/variant-information"; # specifying the variant section.
+							print "NOTICE:\t Deleting records for $delete in Variant tables ";
+							$sth = $dbh->prepare("delete from VariantAnnotation where libraryid = '$delete'"); $sth->execute(); print ".";
+							$sth = $dbh->prepare("delete from VariantResult where libraryid = '$delete'"); $sth->execute(); print ".";
+							$sth = $dbh->prepare("delete from VariantSummary where libraryid = '$delete'"); $sth->execute(); print ".";
+							my $execute = "$ibis -d $vfastbit -y \"libraryid = '$delete'\" -z";
+							`$execute`; print ".";
+							`rm -rf $vfastbit/*sp $vfastbit/*old $vfastbit/*idx $vfastbit/*dic $vfastbit/*int `; #removing old indexes
+							`$ibis -d $vfastbit -query "select genename, geneid, genetype, transcript, feature, codonchange, aminoacidchange, libraryid, chrom, tissue, species, consequence, existingvariant, source"`; #create a new index
+							print " Done\n";
+						}
+					}
+					if ($KEYDELETE{$verdict} =~ /^Expression/ || $alldelete ==1 ) {
+						if ($alldelete == 1){
+							if ($KEYDELETE{$i} =~ /^Expression/) { $i--;
+								my $ffastbit = fastbit_path();  #connect to fastbit
+								my $gfastbit = $ffastbit."/gene-information"; # specifying the gene section.
+								my $cfastbit = $ffastbit."/gene_count-information"; #specifying the gene count section
+								
+								print "NOTICE:\t Deleting records for $delete in Gene tables ";
+								$sth = $dbh->prepare("delete from GenesSummary where libraryid = '$delete'"); $sth->execute(); print ".";
+							
+								#deleting gene-information from fastbit
+								my $execute = "$ibis -d -v $gfastbit -y \"libraryid = '$delete'\" -z";
+								`$execute`; print ".";
+								`rm -rf $gfastbit/*sp $gfastbit/*old $gfastbit/*idx $gfastbit/*dic $gfastbit/*int `; #removing old indexes
+								`$ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, species"`; #create a new index based on genename
+								
+								#deleting gene_counts information from fastbit
+								$execute = "$ibis -d -v $cfastbit -y \"libraryid = '$delete'\" -z";
+								`$execute`; print ".";
+								`rm -rf $cfastbit/*sp $cfastbit/*old $cfastbit/*idx $cfastbit/*dic $cfastbit/*int `; #removing old indexes
+								`$ibis -d $cfastbit -query "select genename, libraryid, tissue, species"`; #create a new index based on genename
+								
+								print " Done\n";
+							}
+						} else {
+							my $ffastbit = fastbit_path();  #connect to fastbit
+							my $gfastbit = $ffastbit."/gene-information"; # specifying the gene section.
+							my $cfastbit = $ffastbit."/gene_count-information"; #specifying the gene count section
+								
+							print "NOTICE:\t Deleting records for $delete in Gene tables ";
+							$sth = $dbh->prepare("delete from GenesSummary where libraryid = '$delete'"); $sth->execute(); print ".";
+							
+							#deleting gene-information from fastbit
+							my $execute = "$ibis -d -v $gfastbit -y \"libraryid = '$delete'\" -z";
+							`$execute`; print ".";
+							`rm -rf $gfastbit/*sp $gfastbit/*old $gfastbit/*idx $gfastbit/*dic $gfastbit/*int `; #removing old indexes
+							`$ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, species"`; #create a new index based on genename
+								
+							#deleting gene_counts information from fastbit
+							$execute = "$ibis -d -v $cfastbit -y \"libraryid = '$delete'\" -z";
+							`$execute`; print ".";
+							`rm -rf $cfastbit/*sp $cfastbit/*old $cfastbit/*idx $cfastbit/*dic $cfastbit/*int `; #removing old indexes
+							`$ibis -d $cfastbit -query "select genename, libraryid, tissue, species"`; #create a new index based on genename
+								
+							print " Done\n";
+						}
+					}
+					if ($KEYDELETE{$verdict} =~ /^Alignment/ || $alldelete ==1 ) {
+						if ($alldelete == 1){
+							if ($KEYDELETE{$i} =~ /^Alignment/) { $i--;
+								$sth = $dbh->prepare("select libraryid from GenesSummary where libraryid = '$delete'"); $sth->execute(); $found = $sth->fetch();
+								unless ($found) {
+									$sth = $dbh->prepare("select libraryid from VariantSummary where libraryid = '$delete'"); $sth->execute(); $found = $sth->fetch();
+									unless ($found) {
+										print "NOTICE:\t Deleting records for $delete in Mapping tables .";
+										$sth = $dbh->prepare("delete from TheMetadata where libraryid = '$delete'"); $sth->execute(); print ".";
+										$sth = $dbh->prepare("delete from Syntaxes where libraryid = '$delete'"); $sth->execute(); print ".";
+										$sth = $dbh->prepare("delete from MappingStats where libraryid = '$delete'"); $sth->execute();  print ".";
+										print " Done\n";
+									} else { print "ERROR:\t Variant Information relating to '$delete' is in the database. Delete Variant Information first\n";}
+								} else { print "ERROR:\t Expression Information Relating to '$delete' still present in the database. Delete Expression Information first\n";}
+							}
+						} else {
+							$sth = $dbh->prepare("select libraryid from GenesSummary where libraryid = '$delete'"); $sth->execute(); $found = $sth->fetch();
+							unless ($found) {
+								$sth = $dbh->prepare("select libraryid from VariantSummary where libraryid = '$delete'"); $sth->execute(); $found = $sth->fetch();
+								unless ($found) {
+									print "NOTICE:\t Deleting records for $delete in Mapping tables .";
+									$sth = $dbh->prepare("delete from TheMetadata where libraryid = '$delete'"); $sth->execute(); print ".";
+									$sth = $dbh->prepare("delete from Syntaxes where libraryid = '$delete'"); $sth->execute(); print ".";
+									$sth = $dbh->prepare("delete from MappingStats where libraryid = '$delete'"); $sth->execute();  print ".";
+									print " Done\n";
+								} else { print "ERROR:\t Variant Information relating to '$delete' is in the database. Delete Variant Information first\n";}
+							} else { print "ERROR:\t Expression Information Relating to '$delete' still present in the database. Delete Expression Information first\n";}
+						}
+					}
+				} else { print "ERROR:\t $verdict is an INVALID OPTION\n"; }
+			}
+		} else {print "NOTICE:\t No Option selected\n";}
+	} else {
+		print "NOTICE:\t Information relating to '$delete' is not in the database. Good-bye\n";
+	}
+}# -----------------------------------
 # CREATING EMAIL NOTIFICATION
 if ($sendemail) { NOTIFICATION("Completed Job",0,0); }
 # -----------------------------------
@@ -257,12 +410,14 @@ if ($sendemail) { NOTIFICATION("Completed Job",0,0); }
 
 sub processArguments {
 	my @commandline = @ARGV;
-	GetOptions ( "h|help" => \$help, "man|manual" => \$manual, "send|email" => \$sendemail) or pod2usage ();
+	GetOptions ( "h|help" => \$help, "man|manual" => \$manual, "del|delete=s" => \$delete, "send|email" => \$sendemail) or pod2usage ();
 
 	$help and pod2usage (-verbose=>1, -exitval=>1, -output=>\*STDOUT);
-  $manual and pod2usage (-verbose=>2, -exitval=>1, -output=>\*STDOUT);  
-	@ARGV<=1 or pod2usage("Syntax error");
-	if ($ARGV[0]) { $folder2import = $ARGV[0]; } #library to transfer
+  	$manual and pod2usage (-verbose=>2, -exitval=>1, -output=>\*STDOUT);  
+	unless ($delete) {
+		@ARGV==1 or pod2usage("ERROR:\t No file specified\n"); 
+		if ($ARGV[0]) { $folder2import = $ARGV[0]; } #library to transfer
+	} # end unless delete file is specified
 
 	#setup log file
 	$nosql = @{ open_unique(".nosqlimport.txt") }[1]; `rm -rf $nosql`;
@@ -409,17 +564,17 @@ sub READ_COUNT { #subroutine for read counts
 	if ($readcountfile || $starcountfile) {
 		my $countcolumn = "-1";
 		my ($countpreamble, $checkforpreamble, $readcount) = (0,0,0);
-		$sth = $dbh->prepare("select countstatus from GeneStats where libraryid = $_[0] and countstatus ='done'"); $sth->execute(); $found = $sth->fetch();
+		$sth = $dbh->prepare("select countstatus from GenesSummary where libraryid = $_[0] and countstatus ='done'"); $sth->execute(); $found = $sth->fetch();
 		unless ($found) {
 			my $ffastbit = fastbit_path();
 			my $cfastbit = $ffastbit."/gene_count-information"; # specifying the gene section.
-			`$ibis -d $cfastbit -q 'select count(libraryid) where libraryid = $_[0]' -o $nosql`;
+			`$ibis -d $cfastbit -v -q 'select count(libraryid) where libraryid = $_[0]' -o $nosql`;
 			open(IN,"<",$nosql);
 			no warnings;
 			chomp($readcount = <IN>);
 			close (IN); `rm -rf $nosql`;
 			
-			#get the organism name and the tissue from the database
+			#get the species name and the tissue from the database
 			my $species = $dbh->selectrow_array("select species from BirdLibraries where libraryid = $_[0]");
 			my $tissue = $dbh->selectrow_array("select tissue from BirdLibraries where libraryid = $_[0]");			
 				
@@ -462,7 +617,7 @@ sub READ_COUNT { #subroutine for read counts
 			
 			if ($readcount < $countpreamble && $readcount != 0) {
 				$verbose and print "NOTICE:\t Removed incomplete records for $_[0] in ReadCounts table\n";
-				`$ibis -d $cfastbit -y \"libraryid = $_[0]\" -z`;
+				`$ibis -d $cfastbit -v -y \"libraryid = $_[0]\" -z`;
 				`rm -rf $cfastbit/*sp $cfastbit/*old $cfastbit/*idx $cfastbit/*dic $cfastbit/*int `; #removing old indexes
 			}	
 			
@@ -471,10 +626,10 @@ sub READ_COUNT { #subroutine for read counts
 			($ardea, $ibis) = fastbit();
 			my $ffastbit = fastbit_path(); #connect to fastbit path
 			my $cfastbit = $ffastbit."/gene_count-information"; # specifying the gene section.
-			my $execute = "$ardea -d $cfastbit -m 'genename:text,organism:text,tissue:text,readcount:double,libraryid:int' -t $cnosql";
+			my $execute = "$ardea -d $cfastbit -m 'genename:text,species:text,tissue:text,readcount:double,libraryid:int' -t $cnosql";
 			`$execute` or die "\nERROR\t: Complication importing RawCounts information to FastBit, contact $AUTHOR\n";
 			`rm -rf $cfastbit/*sp`; #removeing old indexes
-			`ibis -d $cfastbit -query "select genename, libraryid, tissue, organism"`; #create a new index based on genename
+			`$ibis -d $cfastbit -query "select genename, libraryid, tissue, species"`; #create a new index based on genename
 			`chmod 777 $cfastbit && rm -rf $cnosql`;
 			
 			$sth = $dbh->prepare("update GenesSummary set countstool = '$counttool', countstatus = 'done' where libraryid= $_[0]"); $sth ->execute(); #updating GenesSummary table.
@@ -488,7 +643,8 @@ sub READ_COUNT { #subroutine for read counts
 }		
 		
 sub GENES_FPKM { #subroutine for getting gene information
-	#INSERT INTO DATABASE: #GeneStats table
+	($ardea, $ibis) = fastbit();
+	#INSERT INTO DATABASE: #GenesSummary table
 	my $ffastbit = fastbit_path();
 	my $gfastbit = $ffastbit."/gene-information"; # specifying the gene section.
 	
@@ -503,26 +659,26 @@ sub GENES_FPKM { #subroutine for getting gene information
 	my $genecount = 0;
 	$sth = $dbh->prepare("select genestatus from GenesSummary where libraryid = $_[0] and genestatus ='done'"); $sth->execute(); $found = $sth->fetch();
 	unless ($found) {
-		`$ibis -d $gfastbit -q 'select count(libraryid) where libraryid = $_[0]' -o $nosql`;
+		`$ibis -d $gfastbit -v -q 'select count(libraryid) where libraryid = $_[0]' -o $nosql`;
 		open(IN,"<",$nosql);
 		no warnings;
 		chomp($genecount = <IN>);
 		close (IN); `rm -rf $nosql`;
 		
-		#get the organism name and the tissue from the database
-		my $species = $dbh->selectrow_array("select a.organism from Animal a join Sample b on a.animalid = b.derivedfrom where b.libraryid = $_[0]");
-		my $tissue = $dbh->selectrow_array("select tissue from Sample where libraryid = $_[0]");
+		#get the species name and the tissue from the database
+		my $species = $dbh->selectrow_array("select species from BirdLibraries where libraryid = $_[0]");
+		my $tissue = $dbh->selectrow_array("select tissue from BirdLibraries where libraryid = $_[0]");
 		
 		#working on the individual fles
 		if ($genesfile){ #working with genes.fpkm_tracking file
 			#cufflinks expression tool name
 			$diffexpress = "Cufflinks";
 			$genes = `cat $genesfile | wc -l`; if ($genes >=2){ $genes--;} else {$genes = 0;} #count the number of genes
-			$sth = $dbh->prepare("update GeneStats set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GeneStats table.
+			$sth = $dbh->prepare("update GenesSummary set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GenesSummary table.
 			unless ($genes == $genecount) {
 				unless ($genecount == 0 ) {
 					$verbose and print "NOTICE:\t Removed incomplete records for $_[0] in Genes-NoSQL\n";
-		      `$ibis -d $gfastbit -y \"libraryid = $delete\" -z`;
+		      `$ibis -d $gfastbit -v -y \"libraryid = $delete\" -z`;
 					`rm -rf $gfastbit/*sp $gfastbit/*old $gfastbit/*idx $gfastbit/*dic $gfastbit/*int `; #removing old indexes
 				}
 				print "NOTICE:\t Importing $diffexpress expression information for $_[0] to Genes-NoSQL ...";
@@ -541,20 +697,20 @@ sub GENES_FPKM { #subroutine for getting gene information
 				} close FPKM;
 				close NOSQL; #end of nosql portion
 		
-				my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,organism:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
+				my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,species:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
 				`$execute` or die "\nERROR\t: Complication importing Expression information to FastBit, contact $AUTHOR\n";
 				`rm -rf $gfastbit/*sp`; #removeing old indexes
-				`ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, organism"`; #create a new index based on genename
+				`$ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, species"`; #create a new index based on genename
 				`chmod 777 $gfastbit && rm -rf $gnosql`;
 				
 				print " Done\n";
-				#set GeneStats to Done
-				$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-				$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+				#set GenesSummary to Done
+				$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+				$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 			} else {
 					$verbose and print "NOTICE:\t $_[0] already in Genes-NoSQL ... Moving on \n";
-					$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-					$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+					$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+					$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 			}
 		} elsif ($transcriptsgtf){ #using gtf files
 			#differential expression tool names
@@ -624,11 +780,11 @@ sub GENES_FPKM { #subroutine for getting gene information
 				#end of sort.
 				#insert into database.
 				$genes = scalar (keys %ARFPKM);
-				$sth = $dbh->prepare("update GeneStats set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GeneStats table.
+				$sth = $dbh->prepare("update GenesSummary set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GenesSummary table.
 				unless ($genes == $genecount) {
 					unless ($genecount == 0 ) {
 						$verbose and print "NOTICE:\t Removed incomplete records for $_[0] in Genes-NoSQL \n";
-						`$ibis -d $gfastbit -y \"libraryid = $_[0]\" -z`;
+						`$ibis -d $gfastbit -v -y \"libraryid = $_[0]\" -z`;
 						`rm -rf $gfastbit/*sp $gfastbit/*old $gfastbit/*idx $gfastbit/*dic $gfastbit/*int `; #removing old indexes
 					}
 					print "NOTICE:\t Importing $diffexpress expression information for $_[0] to Genes-NoSQL ...";
@@ -639,20 +795,20 @@ sub GENES_FPKM { #subroutine for getting gene information
 					}
 					close NOSQL; #end of nosql portion
 					
-					my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,organism:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
+					my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,species:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
 					`$execute` or die "\nERROR\t: Complication importing Expression information to FastBit, contact $AUTHOR\n";
 					`rm -rf $gfastbit/*sp`; #removeing old indexes
-					`ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, organism"`; #create a new index based on genename
+					`$ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, species"`; #create a new index based on genename
 					`chmod 777 $gfastbit && rm -rf $gnosql`;
 				
 					print " Done\n";
-					#set GeneStats to Done
-					$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-					$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+					#set GenesSummary to Done
+					$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+					$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 				}	else {
 						$verbose and print "NOTICE:\t $_[0] already in Genes-NoSQL... Moving on \n";	
-						$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-						$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+						$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+						$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 				}	
 			}
 			elsif (`head -n 1 $transcriptsgtf` =~ /stringtie/i) { #working with stringtie output
@@ -718,14 +874,14 @@ sub GENES_FPKM { #subroutine for getting gene information
 				#end of sort.
 				#insert into database.
 				$genes = scalar (keys %ARFPKM);
-				$sth = $dbh->prepare("update GeneStats set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GeneStats table.
+				$sth = $dbh->prepare("update GenesSummary set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GenesSummary table.
 				$gparameters =~ s/\"//g;
-				$sth = $dbh->prepare("update CommandSyntax set expressionsyntax = '$gparameters' where libraryid= $_[0]"); $sth ->execute(); #updating CommandSyntax table.
+				$sth = $dbh->prepare("update Syntaxes set expsyntax = '$gparameters' where libraryid= $_[0]"); $sth ->execute(); #updating Syntaxes table.
 			
 				unless ($genes == $genecount) {
 					unless ($genecount == 0 ) {
 						$verbose and print "NOTICE:\t Removed incomplete records for $_[0] in Genes-NoSQL\n";
-						`$ibis -d $gfastbit -y \"libraryid = $_[0]\" -z`;
+						`$ibis -d $gfastbit -v -y \"libraryid = $_[0]\" -z`;
 						`rm -rf $gfastbit/*sp $gfastbit/*old $gfastbit/*idx $gfastbit/*dic $gfastbit/*int `; #removing old indexes
 					}
 					print "NOTICE:\t Importing StringTie expression information for $_[0] to Genes-NoSQL ...";
@@ -736,20 +892,20 @@ sub GENES_FPKM { #subroutine for getting gene information
 					}
 					close NOSQL; #end of nosql portion
 					
-					my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,organism:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
+					my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,species:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
 					`$execute` or die "\nERROR\t: Complication importing Expression information to FastBit, contact $AUTHOR\n";
 					`rm -rf $gfastbit/*sp`; #removing old indexes
-					`ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, organism"`; #create a new index based on genename
+					`$ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, species"`; #create a new index based on genename
 					`chmod 777 $gfastbit && rm -rf $gnosql`;
 				
 					print " Done\n";
-					#set GeneStats to Done
-					$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-					$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+					#set GenesSummary to Done
+					$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+					$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 				}	else {
 						$verbose and print "NOTICE:\t $_[0] already in Genes-NoSQL ... Moving on \n";
-						$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-						$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+						$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+						$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 				}	
 			}	else {
 				die "\nFAILED:\tCan not identify source of Genes Expression File '$transcriptsgtf', consult documentation.\n";
@@ -772,14 +928,14 @@ sub GENES_FPKM { #subroutine for getting gene information
 				#end of sort.
 				#insert into database.
 				$genes = scalar (keys %TPM);
-				$sth = $dbh->prepare("update GeneStats set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GeneStats table.
+				$sth = $dbh->prepare("update GenesSummary set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GenesSummary table.
 				$gparameters =~ s/\"//g; 
-				$sth = $dbh->prepare("insert into CommandSyntax (libraryid, expressionsyntax ) values (?,?)");
-				$sth ->execute($_[0], $gparameters) or die "\nERROR:\t Complication in CommandSyntax table, consult documentation\n";
+				$sth = $dbh->prepare("insert into Syntaxes (libraryid, expressionsyntax ) values (?,?)");
+				$sth ->execute($_[0], $gparameters) or die "\nERROR:\t Complication in Syntaxes table, consult documentation\n";
 				unless ($genes == $genecount) {
 					unless ($genecount == 0 ) {
 						$verbose and print "NOTICE:\t Removed incomplete records for $_[0] in Genes-NoSQL\n";
-						`$ibis -d $gfastbit -y \"libraryid = $_[0]\" -z`;
+						`$ibis -d $gfastbit -v -y \"libraryid = $_[0]\" -z`;
 						`rm -rf $gfastbit/*sp $gfastbit/*old $gfastbit/*idx $gfastbit/*dic $gfastbit/*int `; #removing old indexes
 					}
 					print "NOTICE:\t Importing Kallisto expression information for $_[0] to Genes-NoSQL ...";
@@ -790,20 +946,20 @@ sub GENES_FPKM { #subroutine for getting gene information
 					}
 					close NOSQL; #end of nosql portion
 					
-					my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,organism:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
+					my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,species:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
 					`$execute` or die "\nERROR\t: Complication importing Expression information to FastBit, contact $AUTHOR\n";
 					`rm -rf $gfastbit/*sp`; #removing old indexes
-					`ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, organism"`; #create a new index based on genename
+					`$ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, species"`; #create a new index based on genename
 					`chmod 777 $gfastbit && rm -rf $gnosql`;
 				
 					print " Done\n";
-					#set GeneStats to Done
-					$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-					$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+					#set GenesSummary to Done
+					$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+					$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 				}	else {
 						$verbose and print "NOTICE:\t $_[0] already in Genes-NoSQL ... Moving on \n";
-						$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-						$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+						$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+						$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 				}	
 		}	elsif ($diffexpress =~ /salmon/i) { #working with salmon output
 				open(FPKM, "<", $salmonfile) or die "\nERROR:\t Can not open file $salmonfile\n";
@@ -823,15 +979,15 @@ sub GENES_FPKM { #subroutine for getting gene information
 				#end of sort.
 				#insert into database.
 				$genes = scalar (keys %TPM);
-				$sth = $dbh->prepare("update GeneStats set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GeneStats table.
+				$sth = $dbh->prepare("update GenesSummary set genes = $genes, diffexpresstool = '$diffexpress' where libraryid= $_[0]"); $sth ->execute(); #updating GenesSummary table.
 				$gparameters =~ s/\"//g;
-				$sth = $dbh->prepare("insert into CommandSyntax (libraryid, expressionsyntax ) values (?,?)");
-				$sth ->execute($_[0], $gparameters) or die "\nERROR:\t Complication in CommandSyntax table, consult documentation\n";
+				$sth = $dbh->prepare("insert into Syntaxes (libraryid, expressionsyntax ) values (?,?)");
+				$sth ->execute($_[0], $gparameters) or die "\nERROR:\t Complication in Syntaxes table, consult documentation\n";
 				
 				unless ($genes == $genecount) {
 					unless ($genecount == 0 ) {
 						$verbose and print "NOTICE:\t Removed incomplete records for $_[0] in Genes-NoSQL \n";
-						`$ibis -d $gfastbit -y \"libraryid = $_[0]\" -z`;
+						`$ibis -d $gfastbit -v -y \"libraryid = $_[0]\" -z`;
 						`rm -rf $gfastbit/*sp $gfastbit/*old $gfastbit/*idx $gfastbit/*dic $gfastbit/*int `; #removing old indexes
 					}
 					print "NOTICE:\t Importing Salmon expression information for $_[0] to Genes-NoSQL ...";
@@ -842,20 +998,20 @@ sub GENES_FPKM { #subroutine for getting gene information
 					}
 					close NOSQL; #end of nosql portion
 					
-					my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,organism:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
+					my $execute = "$ardea -d $gfastbit -m 'chrom:text,geneid:text,genename:text,species:text,fpkmstatus:char,tissue:text,coverage:double,tpm:double,fpkm:double,fpkmconflow:double,fpkmconfhigh:double,libraryid:int,chromstart:int,chromstop:int' -t $gnosql";
 					`$execute` or die "\nERROR\t: Complication importing Expression information to FastBit, contact $AUTHOR\n";
 					`rm -rf $gfastbit/*sp`; #removing old indexes
-					`ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, organism"`; #create a new index based on genename
+					`$ibis -d $gfastbit -query "select genename, geneid, libraryid, chrom, tissue, species"`; #create a new index based on genename
 					`chmod 777 $gfastbit && rm -rf $gnosql`;
 				
 					print " Done\n";
-					#set GeneStats to Done
-					$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-					$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+					#set GenesSummary to Done
+					$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+					$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 				}	else {
 						$verbose and print "NOTICE:\t $_[0] already in Genes-NoSQL ... Moving on \n";
-						$sth = $dbh->prepare("update GeneStats set genestatus = 'done' where libraryid = $_[0]");
-						$sth ->execute() or die "\nERROR:\t Complication in GeneStats table, consult documentation\n";
+						$sth = $dbh->prepare("update GenesSummary set genestatus = 'done' where libraryid = $_[0]");
+						$sth ->execute() or die "\nERROR:\t Complication in GenesSummary table, consult documentation\n";
 				}	
 		}
 	} else {
@@ -904,7 +1060,7 @@ sub DBVARIANT {
 		$sth = $dbh->prepare("insert into VariantSummary ( libraryid, varianttool, date) values (?,?,?)");
 		$sth ->execute($_[1], $toolvariant, $date) or die "\nERROR:\t Complication in VariantSummary table, consult documentation\n";;
 		$vparameters =~ s/\"//g;
-		$sth = $dbh->prepare("update CommandSyntax set variantsyntax = '$vparameters' where libraryid = $_[1]");
+		$sth = $dbh->prepare("update Syntaxes set variantsyntax = '$vparameters' where libraryid = $_[1]");
 		$sth ->execute();
 	
 		#VARIANT_RESULTS
@@ -1105,7 +1261,7 @@ sub ANNOVARIANT {
 			if ($CONTENT{$newno}{$ENSGENE{'func'}} =~ /^exonic/i) {
 				$consequence = $CONTENT{$newno}{$ENSGENE{'exonicfunc'}};
 				unless ($consequence =~ /unknown/i){         
-					my @acontent = split(",", $CONTENT{$newno}{$ENSGENE{'aachange'}});
+					my @acontent = split(",", $CONTENT{$newno}{$ENSGENE{'aminoacidchange'}});
 					my @ocontent = split (":", $acontent[$#acontent]);
 					$transcript = $ocontent[1] =~ s/\.\d//g;
 					foreach (@ocontent){
@@ -1152,7 +1308,7 @@ sub ANNOVARIANT {
 			if ($CONTENT{$newno}{$REFGENE{'func'}} =~ /^exonic/i) {
 				$consequence = $CONTENT{$newno}{$REFGENE{'exonicfunc'}};
 				unless ($consequence =~ /unknown/i){         
-					my @acontent = split(",", $CONTENT{$newno}{$REFGENE{'aachange'}});
+					my @acontent = split(",", $CONTENT{$newno}{$REFGENE{'aminoacidchange'}});
 					my @ocontent = split (":", $acontent[$#acontent]);
 					$transcript = $ocontent[1] =~ s/\.\d//g;
 					foreach (@ocontent){
@@ -1244,10 +1400,10 @@ sub NOSQL {
 	my $ffastbit = fastbit_path();  #connect to fastbit
 	my $vfastbit = $ffastbit."/variant-information"; # specifying the variant section.
 	print "NOTICE:\t Importing $_[0] - Variant Annotation to NoSQL '$ffastbit' ...";
-	my $execute = "$ardea -d $vfastbit -m 'variantclass:char,zygosity:char,existingvariant:text,source:text,consequence:text,geneid:text,genename:text,transcript:text,feature:text,genetype:text,refallele:char,altallele:char,tissue:text,chrom:text,aminoacidchange:text,codonchange:text,organism:text,quality:double,libraryid:int,position:int,proteinposition:int' -t $vnosql";
+	my $execute = "$ardea -d $vfastbit -m 'variantclass:char,zygosity:char,existingvariant:text,source:text,consequence:text,geneid:text,genename:text,transcript:text,feature:text,genetype:text,refallele:char,altallele:char,tissue:text,chrom:text,aminoacidchange:text,codonchange:text,species:text,quality:double,libraryid:int,position:int,proteinposition:int' -t $vnosql";
 	`$execute` or die "\nERROR\t: Complication importing to FastBit, contact $AUTHOR\n";
 	`rm -rf $vfastbit/*sp`; #removing old indexes
-	`ibis -d $vfastbit -query "select genename, geneid, genetype, transcript, feature, codonchange, aminoacidchange, libraryid, chrom, tissue, organism, consequence, existingvariant, source"`; #create a new index
+	`$ibis -d $vfastbit -query "select genename, geneid, genetype, transcript, feature, codonchange, aminoacidchange, libraryid, chrom, tissue, species, consequence, existingvariant, source"`; #create a new index
 	`chmod 777 $vfastbit && rm -rf $vnosql`;
 	$sth = $dbh->prepare("update VariantSummary set nosql = 'done' where libraryid = $_[0]"); $sth ->execute(); #update database nosql : DONE
 	
@@ -1295,10 +1451,11 @@ $0 -- Comprehensive pipeline : Inputs frnakenstein results in the database : tra
 
 =head1 SYNOPSIS
 
- importtodb.pl [arguments] [--help] [--manual] <directory of files>
+ importtodb.pl [arguments] [--help] [--delete] [--manual] <directory of files>
 
  Optional arguments:
-        -h, --help                      print help message
+        -del, --delete                  delete library information
+				-h, --help                      print help message
         -m, --man                       print complete documentation
 
 
